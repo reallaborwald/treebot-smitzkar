@@ -2,6 +2,8 @@ from dotenv import load_dotenv
 import json
 from io import BytesIO
 from pathlib import Path
+import signal
+import time
 
 from pydub import AudioSegment
 
@@ -15,28 +17,63 @@ with open ("config.json", "r") as file:
 with open ("config.json", "r") as file:
     config = json.load(file)
 
-def speech_to_text(audio_stream):
+class TimeoutError(Exception):
+    pass
+
+def timeout_handler(signum, frame):
+    raise TimeoutError("Speech-to-text operation timed out")
+
+def speech_to_text(audio_stream, timeout_seconds=30):
     """
     Transcribes speech from an audio BytesIO stream to text using OpenAI's Whisper model.
 
     Parameters:
     - audio_stream: BytesIO, audio data
+    - timeout_seconds: int, timeout for the API call
 
     Returns:
-    - str: The transcribed text.
+    - tuple: (transcription, language) or (None, None) if failed
     """
+    
+    if audio_stream is None:
+        print("⚠️  Audio stream is None, cannot transcribe")
+        return None, None
+    
+    # Set up timeout
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(timeout_seconds)
+    
+    try:
+        client = OpenAI()
+        
+        # Reset stream position to beginning
+        audio_stream.seek(0)
+        
+        response = client.audio.transcriptions.create(
+            model="whisper-1", 
+            file=audio_stream,
+            response_format="verbose_json"
+        )
 
-    client = OpenAI()
-    response = client.audio.transcriptions.create(
-        model="whisper-1", 
-        file=audio_stream,
-        response_format="verbose_json"
-    )
-
-    transcription = response.text
-    language = response.language
-
-    return transcription, language
+        transcription = response.text.strip()
+        language = response.language
+        
+        # Check if transcription is meaningful (not just empty or noise)
+        if not transcription or len(transcription) < 2:
+            print("⚠️  Transcription too short or empty, likely just noise")
+            return None, None
+        
+        signal.alarm(0)  # Cancel the alarm
+        return transcription, language
+        
+    except TimeoutError:
+        print(f"🕐 Speech-to-text timed out after {timeout_seconds} seconds")
+        return None, None
+    except Exception as e:
+        print(f"❌ Error in speech-to-text: {e}")
+        return None, None
+    finally:
+        signal.alarm(0)  # Ensure alarm is cancelled
 
 def query_chatgpt(question, prompt, messages):
     """

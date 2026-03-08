@@ -12,7 +12,12 @@ from recording import VoiceRecorder
 import simpleaudio as sa
 import RPi.GPIO as GPIO
 
-LED_PIN = 24
+# KARL NOTES: 
+# 2026-01-16
+# this fails to be executed via console, due to bme280_sensor using wrong dependencies  
+# as a dirty hack, I replaced it with a stub using manually set env data (see MARK)
+
+LED_PIN = 24 #ks: this is the "button"/touch input -> when it gets set high, loop = active
 GPIO.setmode(GPIO.BCM)  # Use BCM pin numbering
 GPIO.setup(LED_PIN, GPIO.OUT)  # Set LED pin as output
 
@@ -21,7 +26,9 @@ with open ("config.json", "r") as file:
     config = json.load(file)
 
 if config["tech_config"]["use_raspberry"]:
-    from bme280_sensor import get_sensor_readings
+    #MARK: dirty hack
+    # from bme280_sensor import get_sensor_readings
+    from bme280_sensor_stub import get_sensor_readings 
 else:
     from all_sensors_on_MAC import get_sensor_readings
 
